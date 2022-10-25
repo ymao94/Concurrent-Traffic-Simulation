@@ -3,7 +3,7 @@
 #include "TrafficLight.h"
 
 /* Implementation of class "MessageQueue" */
-/*
+
 
 template <typename T>
 T MessageQueue<T>::receive()
@@ -11,16 +11,27 @@ T MessageQueue<T>::receive()
     // FP.5a : The method receive should use std::unique_lock<std::mutex> and _condition.wait() 
     // to wait for and receive new messages and pull them from the queue using move semantics. 
     // The received object should then be returned by the receive function. 
+    std::unique_lock<std::mutex> lock(_mutex);
+    _cond.wait(lock, [this] {
+        return !_queue.empty();
+    });
+    T message = _queue.back();
+    _queue.clear();
+
+    return message;
 }
 
 template <typename T>
-void MessageQueue<T>::send(T &&msg)
+void MessageQueue<T>::send(T &&info)
 {
     // FP.4a : The method send should use the mechanisms std::lock_guard<std::mutex> 
     // as well as _condition.notify_one() to add a new message to the queue and afterwards send a notification.
+    std::lock_guard<std::mutex> lock(_mutex);
+    _queue.emplace_back(std::move(info));
+    _cond.notify_one();
 }
 
-*/
+
 /* Implementation of class "TrafficLight" */
 
 
@@ -34,6 +45,13 @@ void TrafficLight::waitForGreen()
     // FP.5b : add the implementation of the method waitForGreen, in which an infinite while-loop 
     // runs and repeatedly calls the receive function on the message queue. 
     // Once it receives TrafficLightPhase::green, the method returns.
+    while (true) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        
+        if (_queue.receive() == TrafficLightPhase::green) {
+            return;
+        }
+    }
 }
 
 TrafficLightPhase TrafficLight::getCurrentPhase()
@@ -73,6 +91,7 @@ void TrafficLight::cycleThroughPhases()
         {
             _currentPhase = TrafficLightPhase::green;
         }
+            _queue.send(std::move(_currentPhase));
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
             duration = float(rand() % 1000) / 500.0f + 4.0f;
             start = std::chrono::high_resolution_clock::now();
